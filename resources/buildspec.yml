@@ -1,0 +1,33 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "Starting pre-build step"
+      - echo "VERSION is $VERSION"
+      - echo "DATETIME is $DATETIME"
+      - echo "PROJECT is $PROJECT"
+
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+      - echo "Pulling test image from ECR..."
+      - docker pull $IMAGE_URI
+
+  build:
+    commands:
+      - echo "Running the container to execute Cucumber tests..."
+      - docker run --name test-runner $IMAGE_URI
+
+      - echo "Copying reports out of container..."
+      - docker cp test-runner:/app/target ./report
+
+  post_build:
+    commands:
+      - echo "Uploading Cucumber HTML report with content-type..."
+      - aws s3 cp ./report/cucumber-report.html s3://$S3_BUCKET/$PROJECT/$VERSION/$DATETIME/cucumber-report.html --content-type text/html
+
+      - echo "Uploading Surefire JUnit XML and log files..."
+      - aws s3 cp ./report/surefire-reports/ s3://$S3_BUCKET/$PROJECT/$VERSION/$DATETIME/surefire-reports/ --recursive
+
+      - echo "Done uploading test reports and logs."
